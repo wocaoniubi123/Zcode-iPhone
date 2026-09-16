@@ -9,8 +9,6 @@ import UIKit
 struct RemoteWebView: UIViewRepresentable {
     let url: URL
     let reloadToken: Int
-    /// WebView 自身 UI 风格 override（nil = 不干预，跟随系统）
-    let appearance: AppearanceMode?
     let onExit: () -> Void
     let onThemeChange: (Bool) -> Void   // true = 页面深色
 
@@ -28,7 +26,6 @@ struct RemoteWebView: UIViewRepresentable {
 
         let web = WKWebView(frame: .zero, configuration: cfg)
         web.allowsBackForwardNavigationGestures = false   // 左滑逻辑统一走自定义手势
-        if let appearance { web.overrideUserInterfaceStyle = appearance.uiStyle }
         context.coordinator.web = web
         context.coordinator.onExit = onExit
         context.coordinator.onThemeChange = onThemeChange
@@ -44,7 +41,6 @@ struct RemoteWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {
-        if let appearance { web.overrideUserInterfaceStyle = appearance.uiStyle }
         context.coordinator.onExit = onExit
         context.coordinator.onThemeChange = onThemeChange
         if reloadToken != context.coordinator.lastToken {
@@ -140,7 +136,7 @@ struct SessionView: View {
         Group {
             if let url = URL(string: urlString) {
                 RemoteWebView(url: url, reloadToken: reloadToken,
-                              appearance: nil, onExit: { dismiss() },
+                              onExit: { dismiss() },
                               onThemeChange: { pageIsDark = $0 })
                     // Safari 同款：顶底全铺满，页面画布直达物理屏幕边；
                     // 状态栏文字叠在页面底色上，官方页面自己处理顶部安全区避让
