@@ -373,9 +373,6 @@ struct SwipeToDeleteCard<Content: View>: View {
                 .onTapGesture { }
                 .allowsHitTesting(true)
         }
-        .onChange(of: dragState) { _, new in
-            _ = new
-        }
     }
 }
 
