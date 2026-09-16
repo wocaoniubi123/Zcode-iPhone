@@ -242,7 +242,6 @@ struct RootView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(GlassStyle.secondary(shade).opacity(0.6))
-            }
             .padding(14)
             .background(
                 ZStack {

@@ -1,3 +1,5 @@
+import SwiftUI
+
 // MARK: - 左滑操作卡片：tap/滑动统一裁决，滑动永不误触发打开
 // 原理：卡片不再是 Button。SwipeToDeleteCard 自己接 DragGesture + TapGesture，
 // 规则——一次触摸里横向位移 > 10pt 即判定为滑动，本次触摸永远不触发 onOpen。
