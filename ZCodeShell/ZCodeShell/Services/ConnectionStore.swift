@@ -12,7 +12,7 @@ final class ConnectionStore: ObservableObject {
     private let service = "zcode-shell.conn"
     private let defaults = UserDefaults.standard
 
-    struct Meta: Codable {
+    struct Meta: Codable, Hashable, Identifiable {
         let id: UUID
         var name: String
         var lastUsed: Date
