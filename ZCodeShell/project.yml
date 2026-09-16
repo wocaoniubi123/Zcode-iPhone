@@ -24,8 +24,8 @@ targets:
       path: ZCodeShell/Info.plist
       properties:
         CFBundleDisplayName: ZCode
-        CFBundleShortVersionString: "1.4.0"
-        CFBundleVersion: "6"
+        CFBundleShortVersionString: "1.4.1"
+        CFBundleVersion: "7"
         UILaunchScreen: {}               # 空字典即用系统默认启动屏，避免黑盒
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

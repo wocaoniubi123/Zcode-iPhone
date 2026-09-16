@@ -30,7 +30,7 @@ struct MainShellView: View {
 
     var body: some View {
         ZStack {
-            // 装饰层实底：全屏铺，底层窗口颜色变化透不上来
+            // 装饰层实底：窗口层已铺同色（WindowHost），此处再铺一层双保险
             GlassStyle.canvas(theme).ignoresSafeArea()
             switch tab {
             case .connections:
@@ -55,5 +55,11 @@ struct MainShellView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: inSession)
+        .onAppear {
+            WindowHost.shared.apply(.decor(theme))
+        }
+        .onChange(of: decorRaw) { _ in
+            WindowHost.shared.apply(.decor(theme))
+        }
     }
 }

@@ -159,22 +159,14 @@ struct SessionView: View {
             }
         }
         .onDisappear {
-            setWindowOverride(.unspecified)       // 退出会话页，底层颜色交还系统
+            // 三态直切：远程主题 → 装饰主题，窗口配色无中间态，状态栏不闪
+            WindowHost.shared.apply(.decor(DecorTheme(rawValue: UserDefaults.standard.string(forKey: DecorTheme.key) ?? "") ?? .light))
         }
     }
 
     /// 底层窗口色跟远程页面真实主题（探针上报，固化为底层行为，无开关）。
-    /// 装饰层主题与此无关。
+    /// 装饰层主题与此无关。窗口实底色同步铺（SwiftUI 之下，永不露缝）。
     private func applyWindowStyle(_ dark: Bool) {
-        setWindowOverride(dark ? .dark : .light)
-    }
-
-    private func setWindowOverride(_ style: UIUserInterfaceStyle) {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        for scene in scenes where scene.activationState == .foregroundActive {
-            for window in scene.windows {
-                window.overrideUserInterfaceStyle = style
-            }
-        }
+        WindowHost.shared.apply(.remote(dark: dark))
     }
 }
