@@ -4,6 +4,8 @@ options:
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
+  xcodeVersion: "15.4"     # runner 是 Xcode 15.4；XcodeGen 2.46 默认 format(77) 它读不了
+  generateEmptyDirectories: true
 
 settings:
   base:
