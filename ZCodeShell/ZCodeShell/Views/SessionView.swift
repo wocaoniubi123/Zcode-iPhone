@@ -88,16 +88,70 @@ struct SessionView: View {
             if let url = URL(string: urlString) {
                 RemoteWebView(url: url, reloadToken: reloadToken,
                               appearance: appearance, onExit: { dismiss() })
-                    // 顶部在 safe area 内（不进状态栏），底部铺满由官方页面自己适配
-                    .ignoresSafeArea(.container, edges: .bottom)
+                    // Safari 同款：顶底全铺满，页面画布直达物理屏幕边，
+                    // 状态栏文字叠在页面底色上；官方页面自己处理顶部安全区避让
+                    .ignoresSafeArea()
             } else {
                 Text("链接无效，请删除后重新添加").foregroundStyle(.red)
             }
         }
         .toolbar(.hidden, for: .navigationBar)   // 去掉 "返回 ZCode / 计算机名 / 刷新" 整条
+        .statusBarStyle(appearance.statusBarStyle) // 状态栏文字颜色跟随外观
         .onAppear { reloadToken += 1 }
         .onChange(of: scenePhase) { phase in
             if phase == .active { reloadToken += 1 }
         }
+    }
+}
+
+/// 状态栏文字颜色：深色页面→白字，浅色→黑字，跟随系统→交给系统
+extension AppearanceMode {
+    var statusBarStyle: UIStatusBarStyle {
+        switch self {
+        case .system: return .default
+        case .light: return .darkContent
+        case .dark: return .lightContent
+        }
+    }
+}
+
+/// SwiftUI 修饰器：托管状态栏样式。
+/// 原理：插一个隐藏的 UIViewController 作为状态栏样式决定者（childForStatusBarStyle 链），
+/// scene 架构下 UIWindow 硬 override 不可靠，这是可靠做法。
+struct StatusBarStyleModifier: ViewModifier {
+    let style: UIStatusBarStyle
+    @State private var host = StatusBarHostVC()
+
+    func body(content: Content) -> some View {
+        content.background(
+            StatusBarHost(vc: host)   // 常驻视图层级，VC 的 preferredStatusBarStyle 生效
+                .frame(width: 0, height: 0)
+        )
+        .onAppear { host.style = style }
+        .onChange(of: style) { _ in
+            host.style = style
+            host.setNeedsStatusBarAppearanceUpdate()
+        }
+    }
+}
+
+/// 状态栏样式决定者：SwiftUI 内嵌的 UIViewController。
+final class StatusBarHostVC: UIViewController {
+    var style: UIStatusBarStyle = .default
+
+    override var preferredStatusBarStyle: UIStatusBarStyle { style }
+}
+
+/// 把 UIViewController 挂进 SwiftUI 层级的 representable。
+struct StatusBarHost: UIViewControllerRepresentable {
+    let vc: StatusBarHostVC
+
+    func makeUIViewController(context: Context) -> StatusBarHostVC { vc }
+    func updateUIViewController(_ vc: StatusBarHostVC, context: Context) {}
+}
+
+extension View {
+    func statusBarStyle(_ style: UIStatusBarStyle) -> some View {
+        modifier(StatusBarStyleModifier(style: style))
     }
 }
