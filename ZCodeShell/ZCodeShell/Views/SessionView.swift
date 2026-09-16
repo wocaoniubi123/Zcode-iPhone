@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import UIKit
+import Photos
 
 /// WKWebView 封装：
 /// - 打开/回前台/手动 token 递增 → reload
@@ -36,6 +37,14 @@ struct RemoteWebView: UIViewRepresentable {
         edge.edges = .left
         edge.delegate = context.coordinator
         web.addGestureRecognizer(edge)
+
+        // 长按图片 → 自接管菜单（保存到相册/复制图片），替代 WKWebView 内置英文菜单，
+        // 并提供"已保存"反馈（内置菜单存图无任何提示）
+        let longPress = UILongPressGestureRecognizer(
+            target: context.coordinator, action: #selector(Coordinator.longPress(_:)))
+        longPress.minimumPressDuration = 0.45
+        longPress.delegate = context.coordinator
+        web.addGestureRecognizer(longPress)
 
         // 键盘首弹校准：第一次键盘弹出时强推一次 resize，让官方页面的键盘适配"热身"，
         // 否则首次输入框会被键盘挡住（第二次起 WebView 视口已初始化，系统自己正常）
@@ -120,6 +129,144 @@ struct RemoteWebView: UIViewRepresentable {
             } else {
                 onExit?()         // 页面内已到顶 → 回连接列表
             }
+        }
+
+        // MARK: - 长按图片接管
+
+        @objc func longPress(_ g: UILongPressGestureRecognizer) {
+            guard g.state == .began, let web else { return }
+            let point = g.location(in: web)
+            // hit-test 取长按位置的 <img> 的 src（viewport 坐标）
+            let pick = """
+            (function(){
+              var el = document.elementFromPoint(\(String(format: "%.1f", point.x)), \(String(format: "%.1f", point.y)));
+              if (!el || el.tagName !== 'IMG') return null;
+              var r = el.getBoundingClientRect();
+              var src = el.currentSrc || el.src;
+              return src ? JSON.stringify({src: src, w: r.width, h: r.height}) : null;
+            })()
+            """
+            web.evaluateJavaScript(pick) { [weak self] result, _ in
+                guard let json = result as? String,
+                      let data = json.data(using: .utf8),
+                      let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let src = info["src"] as? String, !src.isEmpty else { return }
+                self?.showImageMenu(src: src, in: web, at: point)
+            }
+        }
+
+        /// 自接管图片菜单（中文），替代系统英文菜单
+        private func showImageMenu(src: String, in web: WKWebView, at point: CGPoint) {
+            let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            alert.addAction(UIAlertAction(title: "保存到相册", style: .default) { [weak self] _ in
+                self?.saveImage(from: src, in: web)
+            })
+            alert.addAction(UIAlertAction(title: "复制图片", style: .default) { [weak self] _ in
+                self?.copyImage(from: src, in: web)
+            })
+            alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+            // iPad 必须给 sourceView，否则弹不出
+            if let root = rootViewController() {
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    alert.popoverPresentationController?.sourceView = web
+                    alert.popoverPresentationController?.sourceRect = CGRect(x: point.x, y: point.y, width: 1, height: 1)
+                }
+                root.present(alert, animated: true)
+            }
+        }
+
+        /// 取图片数据：先试页面内 fetch（带页面会话上下文/cookie），dataURL 直接解
+        private func fetchImageData(src: String, in web: WKWebView, done: @escaping (Data?) -> Void) {
+            if src.hasPrefix("data:") {
+                if let url = URL(string: src), let d = try? Data(contentsOf: url) { done(d) } else { done(nil) }
+                return
+            }
+            let js = """
+            (function(){
+              return fetch(\(jsonEscape(src)), {credentials:'include'})
+                .then(r => r.ok ? r.blob() : Promise.reject(0))
+                .then(b => new Promise(res => {
+                  var fr = new FileReader();
+                  fr.onload = () => res(fr.result);
+                  fr.readAsDataURL(b);
+                }))
+                .catch(() => null);
+            })()
+            """
+            web.evaluateJavaScript(js) { result, _ in
+                guard let s = result as? String, s.hasPrefix("data:"),
+                      let url = URL(string: s), let d = try? Data(contentsOf: url) else { done(nil); return }
+                done(d)
+            }
+        }
+
+        private func saveImage(from src: String, in web: WKWebView) {
+            fetchImageData(src: src, in: web) { data in
+                guard let data else {
+                    self.toast("获取图片失败")
+                    return
+                }
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                    guard status == .authorized || status == .limited else {
+                        DispatchQueue.main.async { self.toast("没有相册权限") }
+                        return
+                    }
+                    PHPhotoLibrary.shared().performChanges({
+                        PHAssetChangeRequest.creationRequestForAsset(from: UIImage(data: data) ?? UIImage())
+                    }) { ok, _ in
+                        DispatchQueue.main.async {
+                            self.toast(ok ? "已保存到相册" : "保存失败")
+                        }
+                    }
+                }
+            }
+        }
+
+        private func copyImage(from src: String, in web: WKWebView) {
+            fetchImageData(src: src, in: web) { data in
+                guard let data, let img = UIImage(data: data) else {
+                    self.toast("获取图片失败")
+                    return
+                }
+                UIPasteboard.general.image = img
+                self.toast("已复制图片")
+            }
+        }
+
+        // MARK: - Toast
+
+        private func toast(_ text: String) {
+            guard let root = rootViewController() else { return }
+            let label = UILabel()
+            label.text = text
+            label.font = .systemFont(ofSize: 14, weight: .medium)
+            label.textColor = .white
+            label.textAlignment = .center
+            label.backgroundColor = UIColor(white: 0, alpha: 0.75)
+            label.layer.cornerRadius = 18
+            label.clipsToBounds = true
+            let w = min(max(label.intrinsicContentSize.width + 44, 120), 300)
+            label.frame = CGRect(x: 0, y: 0, width: w, height: 44)
+            label.translatesAutoresizingMaskIntoConstraints = true
+            root.view.addSubview(label)
+            label.center = CGPoint(x: root.view.bounds.midX, y: root.view.bounds.height - 120)
+            label.alpha = 0
+            UIView.animate(withDuration: 0.2) { label.alpha = 1 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                UIView.animate(withDuration: 0.3, animations: { label.alpha = 0 }) { _ in
+                    label.removeFromSuperview()
+                }
+            }
+        }
+
+        private func rootViewController() -> UIViewController? {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            return scenes.flatMap { $0.windows }.first(where: \.isKeyWindow)?.rootViewController
+        }
+
+        private func jsonEscape(_ s: String) -> String {
+            let data = try? JSONSerialization.data(withJSONObject: [s])
+            return String(data: data ?? Data("null".utf8), encoding: .utf8) ?? "null"
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,

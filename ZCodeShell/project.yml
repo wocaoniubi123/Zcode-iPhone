@@ -23,9 +23,11 @@ targets:
     info:
       path: ZCodeShell/Info.plist
       properties:
+        CFBundleLocalizations: [zh-Hans, en]
+        CFBundleDevelopmentRegion: zh-Hans
         CFBundleDisplayName: ZCode
-        CFBundleShortVersionString: "1.4.1"
-        CFBundleVersion: "7"
+        CFBundleShortVersionString: "1.5.0"
+        CFBundleVersion: "8"
         UILaunchScreen: {}               # 空字典即用系统默认启动屏，避免黑盒
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
