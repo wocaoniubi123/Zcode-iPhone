@@ -4,6 +4,7 @@ import SwiftUI
 /// 启动时自动进入最近一条连接。
 struct RootView: View {
     @EnvironmentObject private var store: ConnectionStore
+    @AppStorage(AppearanceMode.key) private var appearanceRaw = AppearanceMode.system.rawValue
     @State private var path: [ConnectionStore.Meta] = []
     @State private var showScanner = false
     @State private var showManual = false
@@ -52,6 +53,20 @@ struct RootView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showScanner = true } label: { Image(systemName: "qrcode.viewfinder") }
                         .accessibilityLabel("扫码添加")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        ForEach(AppearanceMode.allCases) { m in
+                            Button {
+                                appearanceRaw = m.rawValue
+                            } label: {
+                                Label(m.label, systemImage: m.icon)
+                            }
+                        }
+                    } label: {
+                        // 菜单图标跟随当前模式（AppStorage 变化驱动重建）
+                        Image(systemName: (AppearanceMode(rawValue: appearanceRaw) ?? .system).icon)
+                    }.accessibilityLabel("外观")
                 }
             }
             .navigationDestination(for: ConnectionStore.Meta.self) { meta in
