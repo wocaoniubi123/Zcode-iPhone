@@ -58,7 +58,8 @@ struct SwipeToDeleteCard<Content: View>: View {
             content
                 .offset(x: currentOffset)
                 .contentShape(Rectangle())
-                .gesture(slideGesture)                 // 横向滑动（含 0 位移起手）
+                // 开档（offsetX != 0）时不挂滑动手势：手指直接落在露出的按钮上即可点
+                .gesture(offsetX == 0 ? slideGesture : nil)
                 .simultaneousGesture(tapGesture)       // 干净 tap → 打开
         }
     }
@@ -66,7 +67,7 @@ struct SwipeToDeleteCard<Content: View>: View {
     /// 横向滑动：onChanged 里实时判定横向主导，一旦判定为滑动，
     /// dragX 持续更新；tapGesture 的 onEnded 检查 isHorizontalDrag 决定是否打开
     private var slideGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
             .onChanged { g in
                 guard abs(g.translation.width) > abs(g.translation.height) else { return }
                 if !isHorizontalDrag, abs(g.translation.width) > 10 {

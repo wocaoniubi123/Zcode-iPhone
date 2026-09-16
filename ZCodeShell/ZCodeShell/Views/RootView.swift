@@ -163,9 +163,6 @@ struct RootView: View {
                 .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { showPlusMenu = false } }
 
             VStack(alignment: .trailing, spacing: 0) {
-                // 小箭头
-                GlassArrow(shade: shade)
-                    .padding(.trailing, 26)
                 GlassMenuCard(shade: shade) {
                     menuRow(icon: "qrcode.viewfinder", tint: GlassStyle.accent, text: "扫码连接") {
                         showPlusMenu = false
@@ -338,20 +335,6 @@ struct FloatingGlassTab: View {
                 .strokeBorder(active ? GlassStyle.accent.opacity(0.4) : .clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// 菜单小箭头
-struct GlassArrow: View {
-    let shade: DecorShade
-    var body: some View {
-        RoundedRectangle(cornerRadius: 3)
-            .fill(GlassStyle.glassFillColor(shade))
-            .frame(width: 16, height: 16)
-            .rotationEffect(.degrees(45))
-            .overlay(RoundedRectangle(cornerRadius: 3)
-                .stroke(GlassStyle.stroke(shade), lineWidth: 1))
-            .simultaneousGesture(TapGesture())
     }
 }
 
