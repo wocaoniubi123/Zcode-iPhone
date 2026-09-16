@@ -46,15 +46,14 @@ struct RemoteWebView: UIViewRepresentable {
                 coordinator.keyboardCalibrationCount += 1
                 // 只在首一两次介入（之后系统链路已正常，不再干预）
                 guard coordinator.keyboardCalibrationCount <= 2 else { return }
-                let end = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
-                let inset = max(0, end.height - web.safeAreaInsets.bottom)
-                web.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: inset, right: 0)
-                web.scrollIndicatorInsets = web.contentInset
-                web.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
-                // 归零 contentInset，交还官方页面自己的滚动适配（避免双重上移）
+                // 强制官方页面重算视口（visualViewport 变化），触发它自己的键盘上移逻辑
+                web.evaluateJavaScript("""
+                    (function(){
+                      window.dispatchEvent(new Event('resize'));
+                      if (window.visualViewport) window.visualViewport.dispatchEvent(new Event('resize'));
+                    })()
+                    """, completionHandler: nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak web] in
-                    web?.contentInset = .zero
-                    web?.scrollIndicatorInsets = .zero
                     web?.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
                 }
             }
