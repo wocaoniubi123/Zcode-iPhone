@@ -38,7 +38,7 @@ final class WindowHost {
     private func foreachKeyWindow(_ body: (UIWindow) -> Void) {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         for scene in scenes where scene.activationState == .foregroundActive || scenes.count == 1 {
-            for window in scene.windows where window.isKey {
+            for window in scene.windows where window.isKeyWindow {
                 body(window)
             }
         }
