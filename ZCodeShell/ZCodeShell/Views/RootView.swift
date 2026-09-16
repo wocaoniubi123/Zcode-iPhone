@@ -40,11 +40,7 @@ struct RootView: View {
                         ScrollView {
                             LazyVStack(spacing: 11) {
                                 ForEach(store.connections) { meta in
-                                    SwipeToDeleteCard(shade: shade,
-                                                      onRename: { renameTarget = meta; renameText = meta.name },
-                                                      onDelete: { pendingDelete = meta }) {
-                                        card(meta)
-                                    }
+                                    card(meta)
                                 }
                             }
                             .padding(.horizontal, 14)
@@ -213,8 +209,7 @@ struct RootView: View {
     // MARK: - 玻璃卡片
 
     private func card(_ meta: ConnectionStore.Meta) -> some View {
-        Button { path.append(meta) } label: {
-            HStack(spacing: 12) {
+        let cardContent = HStack(spacing: 12) {
                 Text(String(meta.name.prefix(1)).uppercased())
                     .font(.system(size: 18, weight: .black))
                     .foregroundStyle(.white)
@@ -260,7 +255,12 @@ struct RootView: View {
                 .strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
             .shadow(color: GlassStyle.floatShadow(shade), radius: 9, y: 4)
         }
-        .buttonStyle(.plain)
+        return SwipeToDeleteCard(shade: shade,
+                                 onOpen: { path.append(meta) },
+                                 onRename: { renameTarget = meta; renameText = meta.name },
+                                 onDelete: { pendingDelete = meta }) {
+            cardContent
+        }
     }
 
     private var emptyState: some View {
@@ -290,89 +290,6 @@ struct RootView: View {
 
     private func timeLabel(_ d: Date) -> String {
         d == .distantPast ? "未使用" : d.formatted(date: .abbreviated, time: .shortened)
-    }
-}
-
-// MARK: - 左滑操作卡片（ScrollView 内自定义实现）：重命名 + 删除，且滑动后吞掉点击
-
-struct SwipeToDeleteCard<Content: View>: View {
-    let shade: DecorShade
-    let onRename: () -> Void
-    let onDelete: () -> Void
-    @ViewBuilder let content: Content
-
-    @State private var offsetX: CGFloat = 0
-    @GestureState private var dragState: CGFloat = 0
-    /// 本次触摸发生过横向滑动 → 吞掉随之而来的点击（防止滑一下直接进远程）
-    @State private var consumedTap = false
-
-    private let actionWidth: CGFloat = 150   // 重命名 + 删除 两颗按钮总宽
-
-    private var currentOffset: CGFloat {
-        min(0, max(-actionWidth - 24, offsetX + dragState))
-    }
-
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            HStack(spacing: 8) {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offsetX = 0 }
-                    onRename()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "pencil")
-                        Text("重命名").font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(width: 66, height: 78)
-                    .background(Color.orange, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offsetX = 0 }
-                    onDelete()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "trash.fill")
-                        Text("删除").font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(width: 66, height: 78)
-                    .background(Color.red, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-            .opacity(currentOffset < -12 ? 1 : 0)
-            .padding(.trailing, 6)
-
-            content
-                .offset(x: currentOffset)
-                // 滑动发生后的短暂窗口内禁点：吞掉随滑动而来的 tap（防误进远程）
-                .allowsHitTesting(!consumedTap)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                        .updating($dragState) { g, state, _ in
-                            // 只响应横向主导的拖动，避免吃掉纵向滚动
-                            if abs(g.translation.width) > abs(g.translation.height) {
-                                state = g.translation.width
-                                if abs(g.translation.width) > 12 { consumedTap = true }
-                            }
-                        }
-                        .onEnded { _ in
-                            if consumedTap {
-                                // 滑动结束：开档或归位，并在短暂窗口内拦截点击
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    offsetX = currentOffset < -actionWidth / 2 ? -actionWidth : 0
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                    consumedTap = false
-                                }
-                            }
-                        }
-                )
-                .onTapGesture { }
-                .allowsHitTesting(true)
-        }
     }
 }
 

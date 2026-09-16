@@ -26,8 +26,8 @@ targets:
         CFBundleLocalizations: [zh-Hans, en]
         CFBundleDevelopmentRegion: zh-Hans
         CFBundleDisplayName: ZCode
-        CFBundleShortVersionString: "1.5.1"
-        CFBundleVersion: "9"
+        CFBundleShortVersionString: "1.5.2"
+        CFBundleVersion: "10"
         UILaunchScreen: {}               # 空字典即用系统默认启动屏，避免黑盒
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
