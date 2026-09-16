@@ -37,16 +37,16 @@ struct RootView: View {
                         emptyState
                         Spacer()
                     } else {
-                        ScrollView {
-                            LazyVStack(spacing: 11) {
-                                ForEach(store.connections) { meta in
-                                    card(meta)
-                                }
+                        List {
+                            ForEach(store.connections) { meta in
+                                card(meta)
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.top, 6)
-                            .padding(.bottom, 120)
                         }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
                     }
                 }
             }
@@ -206,56 +206,59 @@ struct RootView: View {
     // MARK: - 玻璃卡片
 
     private func card(_ meta: ConnectionStore.Meta) -> some View {
-        let cardContent = HStack(spacing: 12) {
-                Text(String(meta.name.prefix(1)).uppercased())
-                    .font(.system(size: 18, weight: .black))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        LinearGradient(colors: GlassStyle.avatarGradient(meta.name),
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+        HStack(spacing: 12) {
+            Text(String(meta.name.prefix(1)).uppercased())
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(
+                    LinearGradient(colors: GlassStyle.avatarGradient(meta.name),
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(meta.name)
-                        .font(.system(size: 15.5, weight: .semibold))
-                        .foregroundStyle(GlassStyle.text(shade))
-                        .lineLimit(1)
-                    Text("zcode.z.ai · \(timeLabel(meta.lastUsed))")
-                        .font(.system(size: 12))
-                        .foregroundStyle(GlassStyle.secondary(shade))
-                }
-                Spacer(minLength: 0)
-                if meta.id == store.lastConnectionID {
-                    Text("上次")
-                        .font(.system(size: 10.5, weight: .bold))
-                        .foregroundStyle(GlassStyle.accent)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(GlassStyle.accentSoft))
-                        .overlay(Capsule().strokeBorder(GlassStyle.accent.opacity(0.3), lineWidth: 1))
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(GlassStyle.secondary(shade).opacity(0.6))
-            .padding(14)
-            .background(
-                ZStack {
-                    GlassStyle.glassHighlight(shade)
-                    GlassStyle.glassFillColor(shade)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            )
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
-            .shadow(color: GlassStyle.floatShadow(shade), radius: 9, y: 4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(meta.name)
+                    .font(.system(size: 15.5, weight: .semibold))
+                    .foregroundStyle(GlassStyle.text(shade))
+                    .lineLimit(1)
+                Text("zcode.z.ai · (timeLabel(meta.lastUsed))")
+                    .font(.system(size: 12))
+                    .foregroundStyle(GlassStyle.secondary(shade))
+            }
+            Spacer(minLength: 0)
+            if meta.id == store.lastConnectionID {
+                Text("上次")
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundStyle(GlassStyle.accent)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(GlassStyle.accentSoft))
+                    .overlay(Capsule().strokeBorder(GlassStyle.accent.opacity(0.3), lineWidth: 1))
+            }
         }
-        return SwipeToDeleteCard(shade: shade,
-                                 onOpen: { path.append(meta) },
-                                 onRename: { renameTarget = meta; renameText = meta.name },
-                                 onDelete: { pendingDelete = meta }) {
-            cardContent
+        .padding(14)
+        .background(
+            ZStack {
+                GlassStyle.glassHighlight(shade)
+                GlassStyle.glassFillColor(shade)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
+        .shadow(color: GlassStyle.floatShadow(shade), radius: 9, y: 4)
+        .contentShape(Rectangle())
+        .onTapGesture { path.append(meta) }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button { pendingDelete = meta } label: {
+                Label("删除", systemImage: "trash.fill")
+            }
+            .tint(.red)
+            Button { renameTarget = meta; renameText = meta.name } label: {
+                Label("重命名", systemImage: "pencil")
+            }
+            .tint(.orange)
         }
     }
 
@@ -281,7 +284,8 @@ struct RootView: View {
             invalidAlert = "不是有效的 ZCode 官方链接\n(https://…zcode.z.ai/remote/…)"
             return
         }
-        path.append(store.upsert(conn))
+        // 只添加到列表，不自动进入远程；进远程唯一入口 = 点列表卡片
+        _ = store.upsert(conn)
     }
 
     private func timeLabel(_ d: Date) -> String {
