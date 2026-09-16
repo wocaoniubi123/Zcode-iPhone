@@ -1,19 +1,22 @@
 import SwiftUI
 
-/// 设置页（装饰层）：主题三选一 / 状态栏跟随远程开关 / 清除连接（二次确认）/ 版本。
+/// 设置页（装饰层）：主题两档（浅色/深色）/ 清除连接（二次确认）/ 版本。
 struct SettingsView: View {
     @EnvironmentObject private var store: ConnectionStore
-    @Environment(\.colorScheme) private var systemScheme
-    @AppStorage(DecorTheme.key) private var decorRaw = DecorTheme.system.rawValue
-    @AppStorage("zcode.statusbarFollowRemote.v1") private var statusbarFollowRemote = true
+    @AppStorage(DecorTheme.key) private var decorRaw = DecorTheme.light.rawValue
     @State private var confirmClear = false
 
+    private var theme: DecorTheme {
+        DecorTheme(rawValue: decorRaw) ?? .light
+    }
+
     private var shade: DecorShade {
-        GlassStyle.shade(DecorTheme(rawValue: decorRaw) ?? .system, scheme: systemScheme)
+        GlassStyle.shade(theme)
     }
 
     var body: some View {
         ZStack {
+            GlassStyle.canvas(theme).ignoresSafeArea()
             GlowBackground(shade: shade).ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -25,16 +28,6 @@ struct SettingsView: View {
                     groupTitle("外观")
                     group {
                         themeCards
-                    }
-                    groupTitle("会话页")
-                    group {
-                        Toggle(isOn: $statusbarFollowRemote) {
-                            Text("状态栏跟随远程页面")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(GlassStyle.text(shade))
-                        }
-                        .tint(GlassStyle.accent)
-                        .padding(16)
                     }
                     groupTitle("数据")
                     group {
@@ -83,10 +76,9 @@ struct SettingsView: View {
         }
     }
 
-    /// 主题三选一卡片
+    /// 主题两档卡片（浅色/深色，彻底脱离系统配色）
     private var themeCards: some View {
         HStack(spacing: 8) {
-            themeCard(DecorTheme.system, label: "跟随系统", icon: "circle.lefthalf.filled")
             themeCard(DecorTheme.light, label: "浅色", icon: "sun.max")
             themeCard(DecorTheme.dark, label: "深色", icon: "moon")
         }
@@ -94,7 +86,7 @@ struct SettingsView: View {
     }
 
     private func themeCard(_ theme: DecorTheme, label: String, icon: String) -> some View {
-        let selected = (DecorTheme(rawValue: decorRaw) ?? .system) == theme
+        let selected = (DecorTheme(rawValue: decorRaw) ?? .light) == theme
         return Button {
             decorRaw = theme.rawValue
         } label: {

@@ -1,14 +1,13 @@
 import SwiftUI
 
-/// 装饰层主题（纯视觉图层）：跟底层功能颜色完全隔离。
-/// 三选一持久化；"跟随系统"按系统深浅解析出具体材质。
+/// 装饰层主题（纯视觉图层）：与底层功能颜色完全隔离，自带整页实底。
+/// 只有两档，彻底脱离系统配色。
 enum DecorTheme: String, CaseIterable, Identifiable {
-    case system, light, dark
+    case light, dark
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .system: return "跟随系统"
         case .light: return "浅色"
         case .dark: return "深色"
         }
@@ -16,29 +15,39 @@ enum DecorTheme: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .system: return "circle.lefthalf.filled"
         case .light: return "sun.max"
         case .dark: return "moon"
         }
     }
 
+    var shade: DecorShade {
+        self == .light ? .light : .dark
+    }
+
+    /// 装饰层整页实底色：深色全屏黑 / 浅色全屏白
+    var canvasColor: Color {
+        self == .light ? Color(white: 0.965) : Color(white: 0.045)
+    }
+
     static let key = "zcode.decorTheme.v1"
 }
 
-/// 装饰层解析后的明暗（材质选黑玻璃还是白玻璃用）。
+/// 玻璃材质与配色常量（装饰层专用，不碰底层颜色）。
+/// 装饰层明暗（材质选黑玻璃还是白玻璃用）。
 enum DecorShade {
     case light, dark
 }
 
 /// 玻璃材质与配色常量（装饰层专用，不碰底层颜色）。
 enum GlassStyle {
-    /// 装饰层当前明暗：主题设置 + 系统色 scheme 解析
-    static func shade(_ theme: DecorTheme, scheme: ColorScheme?) -> DecorShade {
-        switch theme {
-        case .light: return .light
-        case .dark: return .dark
-        case .system: return scheme == .dark ? .dark : .light
-        }
+    /// 装饰层明暗直接来自主题档位（不再读系统色）
+    static func shade(_ theme: DecorTheme) -> DecorShade {
+        theme.shade
+    }
+
+    /// 装饰层整页实底
+    static func canvas(_ theme: DecorTheme) -> Color {
+        theme.canvasColor
     }
 
     // 琥珀点缀（品牌色，两套主题共用）

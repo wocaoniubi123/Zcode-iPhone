@@ -4,25 +4,29 @@ import SwiftUI
 /// 装饰层与底层完全隔离；进会话页后由远程页面接管。
 struct RootView: View {
     @EnvironmentObject private var store: ConnectionStore
-    @Environment(\.colorScheme) private var systemScheme
-    @AppStorage(DecorTheme.key) private var decorRaw = DecorTheme.system.rawValue
+    @AppStorage(DecorTheme.key) private var decorRaw = DecorTheme.light.rawValue
     @Binding var tab: MainTab
     @Binding var inSession: Bool
     @State private var path: [ConnectionStore.Meta] = []
-    @State private var didAutoOpen = false
     @State private var pendingDelete: ConnectionStore.Meta?
     @State private var showScanner = false
     @State private var showManual = false
     @State private var showPlusMenu = false
     @State private var invalidAlert = ""
 
+    private var theme: DecorTheme {
+        DecorTheme(rawValue: decorRaw) ?? .light
+    }
+
     private var shade: DecorShade {
-        GlassStyle.shade(DecorTheme(rawValue: decorRaw) ?? .system, scheme: systemScheme)
+        GlassStyle.shade(theme)
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
+                // 装饰层实底（隔离底层）+ 光斑（给玻璃透内容）
+                GlassStyle.canvas(theme).ignoresSafeArea()
                 GlowBackground(shade: shade).ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -93,11 +97,6 @@ struct RootView: View {
         }
         .overlay {
             if showPlusMenu { plusMenuOverlay }
-        }
-        .onAppear {
-            guard !didAutoOpen, let last = store.lastConnection else { return }
-            didAutoOpen = true
-            path.append(last)
         }
     }
 

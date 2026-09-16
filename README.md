@@ -1,6 +1,11 @@
 # ZCode iPhone 壳
 
+<p align="center">
+  <img src=".github/preview-themes.png" width="720" alt="浅色/深色主题预览">
+</p>
+
 扫码/粘贴 **ZCode 官方远程链接** 连回 PC 的 iOS 壳（SwiftUI + WKWebView，无自建服务）。
+液态玻璃装饰层 UI：浅色/深色两档主题，与底层功能颜色完全隔离。
 
 ```
 PC 端 ZCode「远程连接」──► 生成二维码/链接（内容相同）

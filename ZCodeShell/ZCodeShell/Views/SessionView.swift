@@ -128,9 +128,9 @@ struct SessionView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("zcode.statusbarFollowRemote.v1") private var statusbarFollowRemote = true
     @State private var reloadToken = 0
     @State private var pageIsDark = true   // 官方页面 meta color-scheme: dark，深色为缺省猜测
+    @State private var hasAppeared = false // 冷启动首次进入不刷新；后台回来才刷
 
     var body: some View {
         Group {
@@ -147,22 +147,25 @@ struct SessionView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
-            reloadToken += 1
-            applyWindowStyle(pageIsDark)          // 先按猜测上色，JS 探针随后纠正
+            // 首次进入：页面本来就是新加载的，不重复刷新
+            hasAppeared = true
+            applyWindowStyle(pageIsDark)
         }
         .onChange(of: pageIsDark) { _ in applyWindowStyle(pageIsDark) }
         .onChange(of: scenePhase) { phase in
-            if phase == .active { reloadToken += 1 }
+            // 从后台回前台（会话页还在栈里）才刷新拉最新对话
+            if phase == .active, hasAppeared {
+                reloadToken += 1
+            }
         }
         .onDisappear {
             setWindowOverride(.unspecified)       // 退出会话页，底层颜色交还系统
         }
     }
 
-    /// 底层窗口色跟远程页面真实主题（探针上报）。装饰层主题与此无关。
-    /// 关闭"状态栏跟随远程"时不做窗口 override，交还系统。
+    /// 底层窗口色跟远程页面真实主题（探针上报，固化为底层行为，无开关）。
+    /// 装饰层主题与此无关。
     private func applyWindowStyle(_ dark: Bool) {
-        guard statusbarFollowRemote else { return }
         setWindowOverride(dark ? .dark : .light)
     }
 
