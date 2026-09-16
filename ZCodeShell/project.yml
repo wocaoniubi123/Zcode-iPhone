@@ -30,6 +30,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSCameraUsageDescription: "扫描 ZCode 官方远程连接二维码"
+        NSPhotoLibraryAddUsageDescription: "保存远程会话中的图片到相册"
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

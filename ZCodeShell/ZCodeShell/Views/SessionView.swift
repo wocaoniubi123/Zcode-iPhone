@@ -26,6 +26,7 @@ struct RemoteWebView: UIViewRepresentable {
 
         let web = WKWebView(frame: .zero, configuration: cfg)
         web.allowsBackForwardNavigationGestures = false   // 左滑逻辑统一走自定义手势
+        web.uiDelegate = context.coordinator              // 保存图片等系统弹层回调
         context.coordinator.web = web
         context.coordinator.onExit = onExit
         context.coordinator.onThemeChange = onThemeChange
@@ -35,6 +36,28 @@ struct RemoteWebView: UIViewRepresentable {
         edge.edges = .left
         edge.delegate = context.coordinator
         web.addGestureRecognizer(edge)
+
+        // 键盘首弹校准：第一次键盘弹出时强推一次 resize，让官方页面的键盘适配"热身"，
+        // 否则首次输入框会被键盘挡住（第二次起 WebView 视口已初始化，系统自己正常）
+        context.coordinator.keyboardObserver = NotificationCenter.default
+            .addObserver(forName: UIResponder.keyboardWillShowNotification,
+                         object: nil, queue: .main) { [weak coordinator = context.coordinator] note in
+                guard let coordinator, let web = coordinator.web else { return }
+                coordinator.keyboardCalibrationCount += 1
+                // 只在首一两次介入（之后系统链路已正常，不再干预）
+                guard coordinator.keyboardCalibrationCount <= 2 else { return }
+                let end = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
+                let inset = max(0, end.height - web.safeAreaInsets.bottom)
+                web.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: inset, right: 0)
+                web.scrollIndicatorInsets = web.contentInset
+                web.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
+                // 归零 contentInset，交还官方页面自己的滚动适配（避免双重上移）
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak web] in
+                    web?.contentInset = .zero
+                    web?.scrollIndicatorInsets = .zero
+                    web?.evaluateJavaScript("window.dispatchEvent(new Event('resize'))", completionHandler: nil)
+                }
+            }
 
         web.load(URLRequest(url: url))
         return web
@@ -54,15 +77,34 @@ struct RemoteWebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(lastToken: reloadToken) }
 
     static func dismantleCoordinator(_ coordinator: Coordinator) {
+        if let obs = coordinator.keyboardObserver { NotificationCenter.default.removeObserver(obs) }
         coordinator.web?.configuration.userContentController.removeAllScriptMessageHandlers()
     }
 
-    final class Coordinator: NSObject, WKScriptMessageHandler, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, WKScriptMessageHandler, UIGestureRecognizerDelegate, WKUIDelegate {
         var web: WKWebView?
         var lastToken: Int
         var onExit: (() -> Void)?
         var onThemeChange: ((Bool) -> Void)?
+        var keyboardObserver: NSObjectProtocol?
+        var keyboardCalibrationCount = 0
         init(lastToken: Int) { self.lastToken = lastToken }
+
+        /// 系统原生"存储图像/拷贝图像"弹层（长按图片）需要 UI 上下文；
+        /// 缺省实现时 WKWebView 部分路径会直接崩 → 兜底兑现请求。
+        func webView(_ webView: WKWebView,
+                     requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                     initiatedByFrame frame: WKFrameInfo,
+                     type: WKMediaCaptureType,
+                     decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+            decisionHandler(.grant)   // 相机/麦克风授权请求直接放行（远程会话可能用得到）
+        }
+
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            decisionHandler(.allow)
+        }
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
@@ -167,6 +209,8 @@ struct SessionView: View {
     /// 底层窗口色跟远程页面真实主题（探针上报，固化为底层行为，无开关）。
     /// 装饰层主题与此无关。窗口实底色同步铺（SwiftUI 之下，永不露缝）。
     private func applyWindowStyle(_ dark: Bool) {
-        WindowHost.shared.apply(.remote(dark: dark))
+        Task { @MainActor in
+            WindowHost.shared.apply(.remote(dark: dark))
+        }
     }
 }
