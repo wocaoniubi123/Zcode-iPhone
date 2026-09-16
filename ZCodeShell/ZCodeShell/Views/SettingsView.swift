@@ -17,6 +17,11 @@ struct SettingsView: View {
             GlowBackground(shade: shade).ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    Text("设置")
+                        .font(.system(size: 30, weight: .heavy))
+                        .foregroundStyle(GlassStyle.text(shade))
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 8)
                     groupTitle("外观")
                     group {
                         themeCards
@@ -66,9 +71,8 @@ struct SettingsView: View {
                 .padding(.bottom, 110)
             }
         }
-        .navigationTitle("设置")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .confirmationDialog("清除所有连接？", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("确认清除", role: .destructive) {
                 store.connections.forEach { store.delete($0) }
@@ -125,8 +129,15 @@ struct SettingsView: View {
 
     private func group<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) { content() }
-            .background(GlassStyle.material(shade), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20)
+            .background(
+                ZStack {
+                    GlassStyle.glassHighlight(shade)
+                    GlassStyle.glassFillColor(shade)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            )
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
+            .shadow(color: GlassStyle.floatShadow(shade), radius: 9, y: 4)
     }
 }

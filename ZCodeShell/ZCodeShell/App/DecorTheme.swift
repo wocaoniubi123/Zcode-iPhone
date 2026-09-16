@@ -45,9 +45,36 @@ enum GlassStyle {
     static let accent = Color(red: 0.96, green: 0.62, blue: 0.04)   // #f59e0b
     static let accentSoft = accent.opacity(0.14)
 
-    /// 卡片/菜单/tab 的背景材质
-    static func material(_ shade: DecorShade) -> Material {
-        shade == .dark ? .ultraThinMaterial : .regularMaterial
+    /// 卡片/菜单/tab 的背景：自定义玻璃材质（不依赖系统 colorScheme，跟装饰层 shade 走）
+    /// 深色=暗玻璃，浅色=亮玻璃；半透明+高光内描边模拟液态玻璃
+    static func glassBackground(_ shade: DecorShade) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(shade == .dark
+                      ? Color(white: 0.11).opacity(0.72)
+                      : Color(white: 0.98).opacity(0.72))
+            // 顶部高光渐变：玻璃"受光"感
+            LinearGradient(colors: shade == .dark
+                           ? [Color.white.opacity(0.14), Color.white.opacity(0.02)]
+                           : [Color.white.opacity(0.85), Color.white.opacity(0.25)],
+                           startPoint: .top, endPoint: .bottom)
+        }
+    }
+
+    static func glassFillColor(_ shade: DecorShade) -> Color {
+        shade == .dark ? Color(white: 0.11).opacity(0.72) : Color(white: 0.98).opacity(0.72)
+    }
+
+    static func glassHighlight(_ shade: DecorShade) -> LinearGradient {
+        LinearGradient(colors: shade == .dark
+                       ? [Color.white.opacity(0.14), Color.white.opacity(0.02)]
+                       : [Color.white.opacity(0.85), Color.white.opacity(0.25)],
+                       startPoint: .top, endPoint: .bottom)
+    }
+
+    /// 悬浮阴影
+    static func floatShadow(_ shade: DecorShade) -> Color {
+        shade == .dark ? Color.black.opacity(0.55) : Color.black.opacity(0.14)
     }
 
     /// 描边

@@ -1,14 +1,20 @@
 import SwiftUI
 
-/// 连接列表页（装饰层）：玻璃卡片 + 右上 + 菜单 + 底部悬浮 tab。
-/// 底层颜色规则不变：点卡片进会话页后一切由远程页面接管。
+/// 连接列表页（装饰层）：自绘悬浮玻璃 tab + 自定义 + 弹层 + 玻璃卡片（自带左滑删除）。
+/// 装饰层与底层完全隔离；进会话页后由远程页面接管。
 struct RootView: View {
     @EnvironmentObject private var store: ConnectionStore
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage(DecorTheme.key) private var decorRaw = DecorTheme.system.rawValue
+    @Binding var tab: MainTab
+    @Binding var inSession: Bool
     @State private var path: [ConnectionStore.Meta] = []
     @State private var didAutoOpen = false
     @State private var pendingDelete: ConnectionStore.Meta?
+    @State private var showScanner = false
+    @State private var showManual = false
+    @State private var showPlusMenu = false
+    @State private var invalidAlert = ""
 
     private var shade: DecorShade {
         GlassStyle.shade(DecorTheme(rawValue: decorRaw) ?? .system, scheme: systemScheme)
@@ -17,39 +23,38 @@ struct RootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                // 底层：装饰光斑（给玻璃透内容）
                 GlowBackground(shade: shade).ignoresSafeArea()
 
-                // List 才有原生 swipeActions（左滑删除）；行背景透明化以露出玻璃材质
-                List {
+                VStack(spacing: 0) {
+                    header
                     if store.connections.isEmpty {
                         emptyState
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(EdgeInsets())
+                        Spacer()
                     } else {
-                        ForEach(store.connections) { meta in
-                            card(meta)
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
+                        ScrollView {
+                            LazyVStack(spacing: 11) {
+                                ForEach(store.connections) { meta in
+                                    SwipeToDeleteCard(shade: shade,
+                                                      onDelete: { pendingDelete = meta }) {
+                                        card(meta)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.top, 6)
+                            .padding(.bottom, 120)
                         }
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
-            .navigationTitle("ZCode")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    plusMenu
-                }
-            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)   // 自绘标题区，不用系统导航
             .navigationDestination(for: ConnectionStore.Meta.self) { meta in
                 if let s = store.urlString(for: meta) {
+                    // push 进远程：通知外壳隐藏悬浮 tab，pop 回来时恢复
                     SessionView(meta: meta, urlString: s)
+                        .onAppear { inSession = true }
+                        .onDisappear { inSession = false }
                 } else {
                     Text("凭证丢失，请删除后重新添加").foregroundStyle(.red)
                 }
@@ -68,10 +73,11 @@ struct RootView: View {
                 handle(raw)
             }
         }
-        .onAppear {
-            guard !didAutoOpen, let last = store.lastConnection else { return }
-            didAutoOpen = true
-            path.append(last)
+        .alert("无法添加", isPresented: Binding(get: { !invalidAlert.isEmpty },
+                                              set: { if !$0 { invalidAlert = "" } })) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(invalidAlert)
         }
         .confirmationDialog("删除连接「\(pendingDelete?.name ?? "")」？",
                             isPresented: Binding(get: { pendingDelete != nil },
@@ -85,32 +91,113 @@ struct RootView: View {
         } message: {
             Text("该连接的凭证将被移除，无法恢复。")
         }
+        .overlay {
+            if showPlusMenu { plusMenuOverlay }
+        }
+        .onAppear {
+            guard !didAutoOpen, let last = store.lastConnection else { return }
+            didAutoOpen = true
+            path.append(last)
+        }
     }
 
-    @State private var showScanner = false
-    @State private var showManual = false
+    // MARK: - 自绘标题区 + 右上 + 钮
 
-    /// 右上 + 玻璃钮 → 菜单（扫码/粘贴）
-    private var plusMenu: some View {
-        Menu {
-            Button { showScanner = true } label: {
-                Label("扫码连接", systemImage: "qrcode.viewfinder")
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("ZCode")
+                    .font(.system(size: 30, weight: .heavy))
+                    .foregroundStyle(GlassStyle.text(shade))
+                Text("远程连接 · \(store.connections.count) 台设备")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(GlassStyle.secondary(shade))
             }
-            Button { showManual = true } label: {
-                Label("粘贴链接", systemImage: "doc.on.clipboard")
+            Spacer()
+            plusButton
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    private var plusButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                showPlusMenu.toggle()
             }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(GlassStyle.text(shade))
-                .frame(width: 36, height: 36)
-                .background(.ultraThinMaterial, in: Circle())
+                .rotationEffect(.degrees(showPlusMenu ? 45 : 0))
+                .frame(width: 40, height: 40)
+                .background(
+                    ZStack {
+                        GlassStyle.glassHighlight(shade)
+                        GlassStyle.glassFillColor(shade)
+                    }
+                    .clipShape(Circle())
+                )
                 .overlay(Circle().strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
+                .shadow(color: GlassStyle.floatShadow(shade), radius: 10, y: 4)
         }
-        .tint(GlassStyle.accent)
+        .buttonStyle(.plain)
     }
 
-    /// 连接玻璃卡片
+    /// 自绘玻璃弹层菜单（替代系统 Menu，材质跟装饰层 shade）
+    private var plusMenuOverlay: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.opacity(0.001)
+                .ignoresSafeArea()
+                .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { showPlusMenu = false } }
+
+            VStack(alignment: .trailing, spacing: 0) {
+                // 小箭头
+                GlassArrow(shade: shade)
+                    .padding(.trailing, 26)
+                GlassMenuCard(shade: shade) {
+                    menuRow(icon: "qrcode.viewfinder", tint: GlassStyle.accent, text: "扫码连接") {
+                        showPlusMenu = false
+                        showScanner = true
+                    }
+                    Divider().overlay(GlassStyle.stroke(shade))
+                    menuRow(icon: "doc.on.clipboard", tint: .blue, text: "粘贴链接") {
+                        showPlusMenu = false
+                        showManual = true
+                    }
+                }
+                .frame(width: 210)
+                .padding(.trailing, 16)
+            }
+            .padding(.top, 96)
+            .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .topTrailing)))
+        }
+    }
+
+    private func menuRow(icon: String, tint: Color, text: String, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+        } label: {
+            HStack(spacing: 11) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 22)
+                Text(text)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(GlassStyle.text(shade))
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 玻璃卡片
+
     private func card(_ meta: ConnectionStore.Meta) -> some View {
         Button { path.append(meta) } label: {
             HStack(spacing: 12) {
@@ -148,18 +235,18 @@ struct RootView: View {
                     .foregroundStyle(GlassStyle.secondary(shade).opacity(0.6))
             }
             .padding(14)
-            .background(GlassStyle.material(shade), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20)
+            .background(
+                ZStack {
+                    GlassStyle.glassHighlight(shade)
+                    GlassStyle.glassFillColor(shade)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            )
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
+            .shadow(color: GlassStyle.floatShadow(shade), radius: 9, y: 4)
         }
         .buttonStyle(.plain)
-        .swipeActions {
-            Button(role: .destructive) {
-                pendingDelete = meta
-            } label: {
-                Label("删除", systemImage: "trash")
-            }
-        }
     }
 
     private var emptyState: some View {
@@ -176,8 +263,7 @@ struct RootView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 90)
-        .padding(.bottom, 110)
+        .padding(.top, 110)
     }
 
     private func handle(_ raw: String) {
@@ -188,24 +274,143 @@ struct RootView: View {
         path.append(store.upsert(conn))
     }
 
-    @State private var invalidAlert = ""
-
     private func timeLabel(_ d: Date) -> String {
         d == .distantPast ? "未使用" : d.formatted(date: .abbreviated, time: .shortened)
     }
 }
 
-/// 底层装饰光斑
-struct GlowBackground: View {
+// MARK: - 左滑删除卡片（ScrollView 内自定义实现，替代 List swipeActions）
+
+struct SwipeToDeleteCard<Content: View>: View {
+    let shade: DecorShade
+    let onDelete: () -> Void
+    @ViewBuilder let content: Content
+
+    @State private var offsetX: CGFloat = 0
+    @State private var isSwiping = false
+
+    private let deleteWidth: CGFloat = 84
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // 底下露出的删除按钮
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offsetX = 0 }
+                onDelete()
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "trash.fill")
+                    Text("删除").font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(width: deleteWidth - 12, height: 78)
+                .background(Color.red, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .opacity(offsetX < -12 ? 1 : 0)
+            .padding(.trailing, 6)
+
+            content
+                .offset(x: offsetX)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 25, coordinateSpace: .local)
+                        .onChanged { g in
+                            // 只响应横向主导的拖动，避免吃掉纵向滚动
+                            guard abs(g.translation.width) > abs(g.translation.height) else { return }
+                            isSwiping = true
+                            let t = g.translation.width
+                            offsetX = max(-deleteWidth - 24, min(0, (isSwiping ? 0 : offsetX) + t))
+                        }
+                        .onEnded { g in
+                            isSwiping = false
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                offsetX = offsetX < -deleteWidth / 2 ? -deleteWidth : 0
+                            }
+                        }
+                )
+        }
+    }
+}
+
+// MARK: - 悬浮玻璃胶囊 tab（连接/设置），自绘
+
+enum MainTab: String { case connections, settings }
+
+struct FloatingGlassTab: View {
+    let shade: DecorShade
+    let activeTab: MainTab
+    var onSelect: ((MainTab) -> Void)?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            tabItem(.connections, icon: "bolt.fill", label: "连接")
+            tabItem(.settings, icon: "gearshape", label: "设置")
+        }
+        .padding(5)
+        .background(
+            ZStack {
+                GlassStyle.glassHighlight(shade)
+                GlassStyle.glassFillColor(shade)
+            }
+            .clipShape(Capsule())
+        )
+        .overlay(Capsule().strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
+        .shadow(color: GlassStyle.floatShadow(shade), radius: 16, y: 6)
+        .padding(.bottom, 18)
+    }
+
+    private func tabItem(_ tab: MainTab, icon: String, label: String) -> some View {
+        let active = activeTab == tab
+        return Button {
+            onSelect?(tab)
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: icon).font(.system(size: 19, weight: .semibold))
+                Text(label).font(.system(size: 10.5, weight: .bold))
+            }
+            .foregroundStyle(active ? GlassStyle.accent : GlassStyle.secondary(shade))
+            .frame(width: 86, height: 46)
+            .background(
+                RoundedRectangle(cornerRadius: 21, style: .continuous)
+                    .fill(active ? GlassStyle.accentSoft : Color.clear)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous)
+                .strokeBorder(active ? GlassStyle.accent.opacity(0.4) : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// 菜单小箭头
+struct GlassArrow: View {
     let shade: DecorShade
     var body: some View {
-        ZStack {
-            let colors = GlassStyle.glow(shade)
-            Circle().fill(colors[0]).frame(width: 240, height: 240)
-                .blur(radius: 60).offset(x: 110, y: -190)
-            Circle().fill(colors[1]).frame(width: 200, height: 200)
-                .blur(radius: 60).offset(x: -120, y: 260)
-        }
-        .allowsHitTesting(false)
+        RoundedRectangle(cornerRadius: 3)
+            .fill(GlassStyle.glassFillColor(shade))
+            .frame(width: 16, height: 16)
+            .rotationEffect(.degrees(45))
+            .overlay(RoundedRectangle(cornerRadius: 3)
+                .stroke(GlassStyle.stroke(shade), lineWidth: 1))
+            .simultaneousGesture(TapGesture())
+    }
+}
+
+/// 玻璃菜单卡片
+struct GlassMenuCard<Content: View>: View {
+    let shade: DecorShade
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .background(
+                ZStack {
+                    GlassStyle.glassHighlight(shade)
+                    GlassStyle.glassFillColor(shade)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            )
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(GlassStyle.stroke(shade), lineWidth: 1))
+            .shadow(color: GlassStyle.floatShadow(shade), radius: 20, y: 8)
     }
 }
