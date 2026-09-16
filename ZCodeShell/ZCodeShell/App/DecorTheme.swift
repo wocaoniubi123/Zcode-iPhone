@@ -115,3 +115,18 @@ enum GlassStyle {
         return palettes[idx]
     }
 }
+
+/// 底层装饰光斑：给玻璃材质提供透出的内容感（纯装饰，不参与功能）
+struct GlowBackground: View {
+    let shade: DecorShade
+    var body: some View {
+        ZStack {
+            let colors = GlassStyle.glow(shade)
+            Circle().fill(colors[0]).frame(width: 240, height: 240)
+                .blur(radius: 60).offset(x: 110, y: -190)
+            Circle().fill(colors[1]).frame(width: 200, height: 200)
+                .blur(radius: 60).offset(x: -120, y: 260)
+        }
+        .allowsHitTesting(false)
+    }
+}
