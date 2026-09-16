@@ -9,7 +9,8 @@ import UIKit
 struct RemoteWebView: UIViewRepresentable {
     let url: URL
     let reloadToken: Int
-    let appearance: AppearanceMode
+    /// WebView 自身 UI 风格 override（nil = 不干预，跟随系统）
+    let appearance: AppearanceMode?
     let onExit: () -> Void
     let onThemeChange: (Bool) -> Void   // true = 页面深色
 
@@ -27,7 +28,7 @@ struct RemoteWebView: UIViewRepresentable {
 
         let web = WKWebView(frame: .zero, configuration: cfg)
         web.allowsBackForwardNavigationGestures = false   // 左滑逻辑统一走自定义手势
-        web.overrideUserInterfaceStyle = appearance.uiStyle
+        if let appearance { web.overrideUserInterfaceStyle = appearance.uiStyle }
         context.coordinator.web = web
         context.coordinator.onExit = onExit
         context.coordinator.onThemeChange = onThemeChange
@@ -43,7 +44,7 @@ struct RemoteWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {
-        web.overrideUserInterfaceStyle = appearance.uiStyle
+        if let appearance { web.overrideUserInterfaceStyle = appearance.uiStyle }
         context.coordinator.onExit = onExit
         context.coordinator.onThemeChange = onThemeChange
         if reloadToken != context.coordinator.lastToken {
@@ -131,19 +132,15 @@ struct SessionView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(AppearanceMode.key) private var appearanceRaw = AppearanceMode.system.rawValue
+    @AppStorage("zcode.statusbarFollowRemote.v1") private var statusbarFollowRemote = true
     @State private var reloadToken = 0
     @State private var pageIsDark = true   // 官方页面 meta color-scheme: dark，深色为缺省猜测
-
-    private var appearance: AppearanceMode {
-        AppearanceMode(rawValue: appearanceRaw) ?? .system
-    }
 
     var body: some View {
         Group {
             if let url = URL(string: urlString) {
                 RemoteWebView(url: url, reloadToken: reloadToken,
-                              appearance: appearance, onExit: { dismiss() },
+                              appearance: nil, onExit: { dismiss() },
                               onThemeChange: { pageIsDark = $0 })
                     // Safari 同款：顶底全铺满，页面画布直达物理屏幕边；
                     // 状态栏文字叠在页面底色上，官方页面自己处理顶部安全区避让
@@ -162,13 +159,14 @@ struct SessionView: View {
             if phase == .active { reloadToken += 1 }
         }
         .onDisappear {
-            setWindowOverride(.unspecified)       // 退出会话页，交还给壳的外观开关
+            setWindowOverride(.unspecified)       // 退出会话页，底层颜色交还系统
         }
     }
 
-    /// 状态栏文字颜色跟着窗口 userInterfaceStyle 走（.default 风格会随 trait 自动切换深浅）。
-    /// 官方页面主题跟随 PC 端而非本机，所以这里以页面真实主题为准。
+    /// 底层窗口色跟远程页面真实主题（探针上报）。装饰层主题与此无关。
+    /// 关闭"状态栏跟随远程"时不做窗口 override，交还系统。
     private func applyWindowStyle(_ dark: Bool) {
+        guard statusbarFollowRemote else { return }
         setWindowOverride(dark ? .dark : .light)
     }
 
