@@ -22,7 +22,7 @@ final class ScannerController: NSObject, ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             self.configureIfNeeded()
-            if self.session.isRunning() == false {
+            if !self.session.isRunning {
                 self.session.startRunning()
             }
             DispatchQueue.main.async { self.isScanning = true }
@@ -32,7 +32,7 @@ final class ScannerController: NSObject, ObservableObject {
     func stop() {
         queue.async { [weak self] in
             guard let self else { return }
-            if self.session.isRunning() {
+            if self.session.isRunning {
                 self.session.stopRunning()
             }
             DispatchQueue.main.async { self.isScanning = false }
