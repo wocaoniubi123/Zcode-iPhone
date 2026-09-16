@@ -1,0 +1,56 @@
+name: ZCodeShell
+options:
+  bundleIdPrefix: com.zcode.shell
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    CODE_SIGNING_ALLOWED: "NO"          # CI 出 unsigned IPA，装机时由 Sideloadly 重签
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+
+targets:
+  ZCodeShell:
+    type: application
+    platform: iOS
+    sources:
+      - path: ZCodeShell
+    info:
+      path: ZCodeShell/Info.plist
+      properties:
+        CFBundleDisplayName: ZCode
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}               # 空字典即用系统默认启动屏，避免黑盒
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: "扫描 PC 端 ZCode bridge 的二维码以建立连接"
+        NSLocalNetworkUsageDescription: "连接同一局域网内电脑上的 ZCode bridge"
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true   # 允许 ws:// 明文连局域网 bridge；wss 不受影响
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"      # 仅 iPhone
+        INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
+
+  ZCodeShellTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ZCodeShellTests
+    dependencies:
+      - target: ZCodeShell
+
+schemes:
+  ZCodeShell:
+    build:
+      targets:
+        ZCodeShell: all
+        ZCodeShellTests: [test]
+    test:
+      targets:
+        - ZCodeShellTests

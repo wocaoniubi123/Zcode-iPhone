@@ -1,0 +1,7 @@
+dist/
+*.xcodeproj
+xcuserdata/
+*.xcuserstate
+.DS_Store
+node_modules/
+.zcode-bridge-token

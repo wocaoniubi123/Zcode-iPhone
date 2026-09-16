@@ -1,0 +1,43 @@
+name: build-ipa
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: cd ZCodeShell && xcodegen generate
+
+      - name: Detect simulator & run tests
+        working-directory: ZCodeShell
+        run: |
+          # 动态探测一个可用 iPhone 模拟器（macos-14 镜像自带 iOS 17.x，设备名随 Xcode 版本变）
+          SIM=$(xcrun simctl list devices available | grep -m1 -E 'iPhone' | sed -E 's/^[[:space:]]*([^(]+) \(([^)]+)\).*/\1 (\2)/')
+          echo "使用模拟器: $SIM"
+          xcodebuild test \
+            -project ZCodeShell.xcodeproj \
+            -scheme ZCodeShell \
+            -destination "platform=iOS Simulator,name=${SIM%% (*},OS=latest" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build unsigned IPA
+        working-directory: ZCodeShell
+        run: |
+          chmod +x scripts/build-ipa.sh
+          ./scripts/build-ipa.sh dist
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZCodeShell-unsigned-ipa
+          path: ZCodeShell/dist/ZCodeShell.ipa
+          if-no-files-found: error
