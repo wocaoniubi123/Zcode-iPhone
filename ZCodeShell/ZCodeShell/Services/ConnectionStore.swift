@@ -2,87 +2,80 @@ import Foundation
 import Security
 
 /// 连接仓库：
-/// - 连接元数据（JSON 数组）→ UserDefaults
-/// - token（按连接 id）→ Keychain
-/// 排序规则：lastUsed 降序，最近使用在前；第 0 条即"上次连接"。
+/// - 完整链接（含凭证）→ Keychain，逐条存取（service 固定，account=id）
+/// - id/name/顺序 → UserDefaults（JSON 数组，不含凭证）
 final class ConnectionStore: ObservableObject {
     static let shared = ConnectionStore()
 
-    private let listKey = "zcode.connections.v1"
-    private let lastIDKey = "zcode.lastConnectionID.v1"
+    private let listKey = "zcode.connections.v2"
+    private let lastIDKey = "zcode.lastConnectionID.v2"
+    private let service = "zcode-shell.conn"
     private let defaults = UserDefaults.standard
 
-    @Published private(set) var connections: [ZCodeConnection] = []
+    struct Meta: Codable {
+        let id: UUID
+        var name: String
+        var lastUsed: Date
+    }
+
+    @Published private(set) var connections: [Meta] = []   // lastUsed 降序
     @Published private(set) var lastConnectionID: UUID?
 
-    init() {
-        load()
+    init() { load() }
+
+    var lastConnection: Meta? { connections.first }
+
+    func urlString(for meta: Meta) -> String? {
+        KeychainStore.read(service: service, account: meta.id.uuidString)
     }
 
-    // MARK: - 查询
-
-    var lastConnection: ZCodeConnection? {
-        guard let id = lastConnectionID else { return connections.first }
-        return connections.first(where: { $0.id == id }) ?? connections.first
-    }
-
-    func token(for id: UUID) -> String? {
-        KeychainStore.read(service: "zcode-shell", account: id.uuidString)
-    }
-
-    // MARK: - 增改
-
-    /// 保存（upsert）并置为"最近使用"。同 host+port+tls 视为同一条，更新而非新增。
+    /// 新增或按"同 sid+mid 视为同一条"更新。返回用于打开的 meta。
     @discardableResult
-    func upsert(host: String, port: Int, useTLS: Bool, token: String) -> ZCodeConnection {
-        let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        var conn = connections.first(where: {
-            $0.host == trimmedHost && $0.port == port && $0.useTLS == useTLS
+    func upsert(_ conn: ZCodeConnection) -> Meta {
+        let sid = conn.url?.queryParams["sid"] ?? conn.urlString
+        let mid = conn.url?.queryParams["mid"] ?? ""
+        var meta = connections.first(where: { m in
+            guard let s = urlString(for: m) else { return false }
+            return (URL(string: s)?.queryParams["sid"] ?? s) == sid
+                && (URL(string: s)?.queryParams["mid"] ?? "") == mid
         })
-        if conn != nil {
-            conn!.lastUsed = Date()
-            conn!.name = "\(trimmedHost):\(port)"
+        if meta != nil {
+            meta!.name = conn.name
         } else {
-            conn = ZCodeConnection(name: "\(trimmedHost):\(port)", host: trimmedHost,
-                                   port: port, useTLS: useTLS, lastUsed: Date())
+            meta = Meta(id: UUID(), name: conn.name, lastUsed: .distantPast)
         }
-        var target = conn!
-        if !token.isEmpty {
-            KeychainStore.save(service: "zcode-shell", account: target.id.uuidString, value: token)
-        }
+        var target = meta!
+        KeychainStore.save(service: service, account: target.id.uuidString, value: conn.urlString)
         connections.removeAll(where: { $0.id == target.id })
+        target.lastUsed = Date()
         connections.insert(target, at: 0)
         lastConnectionID = target.id
         persist()
         return target
     }
 
-    func delete(_ conn: ZCodeConnection) {
-        KeychainStore.delete(service: "zcode-shell", account: conn.id.uuidString)
-        connections.removeAll(where: { $0.id == conn.id })
-        if lastConnectionID == conn.id {
-            lastConnectionID = connections.first?.id
-        }
+    func delete(_ meta: Meta) {
+        KeychainStore.delete(service: service, account: meta.id.uuidString)
+        connections.removeAll(where: { $0.id == meta.id })
+        if lastConnectionID == meta.id { lastConnectionID = connections.first?.id }
         persist()
     }
 
-    func touch(_ conn: ZCodeConnection) {
-        guard let idx = connections.firstIndex(where: { $0.id == conn.id }) else { return }
+    func touch(_ meta: Meta) {
+        guard let idx = connections.firstIndex(where: { $0.id == meta.id }) else { return }
         connections[idx].lastUsed = Date()
-        lastConnectionID = conn.id
+        lastConnectionID = meta.id
         persist()
     }
 
-    // MARK: - 持久化
+    // MARK: - 持久化（UserDefaults 只存元数据，不存链接）
 
     private func load() {
         if let data = defaults.data(forKey: listKey),
-           let list = try? JSONDecoder().decode([ZCodeConnection].self, from: data) {
+           let list = try? JSONDecoder().decode([Meta].self, from: data) {
             connections = list.sorted { $0.lastUsed > $1.lastUsed }
         }
-        if let raw = defaults.string(forKey: lastIDKey) {
-            lastConnectionID = UUID(uuidString: raw)
-        }
+        if let raw = defaults.string(forKey: lastIDKey) { lastConnectionID = UUID(uuidString: raw) }
     }
 
     private func persist() {
@@ -95,16 +88,13 @@ final class ConnectionStore: ObservableObject {
 
 /// Keychain 最小封装：kSecClassGenericPassword，按 (service, account) 存取删。
 enum KeychainStore {
-    private static let base: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword
-    ]
+    private static let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword]
 
     static func save(service: String, account: String, value: String) {
         let query = base.merging([
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]) { _, new in new }
-
         let valueData = Data(value.utf8)
         if SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess {
             SecItemUpdate(query as CFDictionary,
@@ -118,7 +108,7 @@ enum KeychainStore {
     }
 
     static func read(service: String, account: String) -> String? {
-        var query = base.merging([
+        let query = base.merging([
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,

@@ -17,7 +17,7 @@ struct ScannerView: View {
                     .stroke(Color.white, lineWidth: 2)
                     .frame(width: 240, height: 240)
                     .opacity(0.9)
-                Text("对准 PC 端 bridge 打印的二维码")
+                Text("对准 PC 端 ZCode 给出的远程连接二维码")
                     .font(.footnote)
                     .foregroundStyle(.white)
                     .padding(.top, 12)

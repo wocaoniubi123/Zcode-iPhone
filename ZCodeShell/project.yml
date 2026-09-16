@@ -29,10 +29,7 @@ targets:
         UILaunchScreen: {}               # 空字典即用系统默认启动屏，避免黑盒
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSCameraUsageDescription: "扫描 PC 端 ZCode bridge 的二维码以建立连接"
-        NSLocalNetworkUsageDescription: "连接同一局域网内电脑上的 ZCode bridge"
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true   # 允许 ws:// 明文连局域网 bridge；wss 不受影响
+        NSCameraUsageDescription: "扫描 ZCode 官方远程连接二维码"
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

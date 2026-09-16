@@ -1,32 +1,33 @@
 import SwiftUI
 
-/// 首页：上次连接置顶大按钮 + 历史连接列表 + 扫码/手动添加。
-/// 启动时若有"上次连接"，自动打开会话页（失败会停在会话页显示错误）。
+/// 首页：连接列表（最近在前）。右上角扫码，左上角粘贴链接。
+/// 启动时自动进入最近一条连接。
 struct RootView: View {
     @EnvironmentObject private var store: ConnectionStore
-    @State private var path: [ZCodeConnection] = []
+    @State private var path: [ConnectionStore.Meta] = []
     @State private var showScanner = false
     @State private var showManual = false
     @State private var didAutoOpen = false
+    @State private var invalidAlert = ""
 
     var body: some View {
         NavigationStack(path: $path) {
             List {
                 Section("全部连接") {
                     if store.connections.isEmpty {
-                        Text("还没有连接。点右上角扫码添加。")
+                        Text("还没有连接。点右上角扫码，或左上角粘贴官方链接。")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(store.connections) { conn in
-                        Button { path.append(conn) } label: {
+                    ForEach(store.connections) { meta in
+                        Button { path.append(meta) } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(conn.name).foregroundStyle(.primary)
-                                    Text(conn.displayAddress + (conn.useTLS ? "  🔒" : ""))
+                                    Text(meta.name).foregroundStyle(.primary)
+                                    Text(timeLabel(meta.lastUsed))
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(conn.id == store.lastConnectionID ? "上次" : "")
+                                Text(meta.id == store.lastConnectionID ? "上次" : "")
                                     .font(.caption2).foregroundStyle(.tint)
                                 Image(systemName: "chevron.right")
                                     .font(.caption).foregroundStyle(.tertiary)
@@ -34,7 +35,7 @@ struct RootView: View {
                         }
                         .swipeActions {
                             Button(role: .destructive) {
-                                store.delete(conn)
+                                store.delete(meta)
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
@@ -45,45 +46,60 @@ struct RootView: View {
             .navigationTitle("ZCode")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { showManual = true } label: { Image(systemName: "plus") }
+                    Button { showManual = true } label: { Image(systemName: "doc.on.clipboard") }
+                        .accessibilityLabel("粘贴链接添加")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showScanner = true } label: { Image(systemName: "qrcode.viewfinder") }
+                        .accessibilityLabel("扫码添加")
                 }
             }
-            .navigationDestination(for: ZCodeConnection.self) { conn in
-                SessionView(model: SessionModel(connection: conn) {
-                    store.token(for: conn.id)
-                })
+            .navigationDestination(for: ConnectionStore.Meta.self) { meta in
+                if let s = store.urlString(for: meta) {
+                    SessionView(meta: meta, urlString: s)
+                } else {
+                    Text("凭证丢失，请删除后重新添加").foregroundStyle(.red)
+                }
             }
         }
         .sheet(isPresented: $showScanner) {
             ScannerView { raw in
                 showScanner = false
-                handleScan(raw)
+                handle(raw)
             }
             .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showManual) {
-            ManualAddView { host, port, tls, token in
+            ManualAddView { raw in
                 showManual = false
-                let conn = store.upsert(host: host, port: port, useTLS: tls, token: token)
-                path.append(conn)
+                handle(raw)
             }
         }
         .onAppear {
             guard !didAutoOpen, let last = store.lastConnection else { return }
             didAutoOpen = true
-            path.append(last)   // 打开 app 直接进上次连接
+            path.append(last)   // 打开 app 直接进最近连接
+        }
+        .alert("无法添加", isPresented: .init(
+            get: { !invalidAlert.isEmpty },
+            set: { if !$0 { invalidAlert = "" } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(invalidAlert)
         }
     }
 
-    private func handleScan(_ raw: String) {
-        guard let (conn, token) = ConnectionParser.parse(raw) else {
-            showManual = true  // 扫到未知内容 → 落到手动输入
+    /// 扫码与粘贴共用入口：合法官方链接 → upsert → 打开；否则提示无效。
+    private func handle(_ raw: String) {
+        guard let conn = ConnectionParser.parse(raw) else {
+            invalidAlert = "不是有效的 ZCode 官方链接\n(https://…zcode.z.ai/remote/…)"
             return
         }
-        let saved = store.upsert(host: conn.host, port: conn.port, useTLS: conn.useTLS, token: token)
-        path.append(saved)
+        path.append(store.upsert(conn))
+    }
+
+    private func timeLabel(_ d: Date) -> String {
+        d == .distantPast ? "未使用" : d.formatted(date: .abbreviated, time: .shortened)
     }
 }

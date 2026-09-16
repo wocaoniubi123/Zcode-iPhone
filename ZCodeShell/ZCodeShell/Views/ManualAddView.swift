@@ -1,34 +1,35 @@
 import SwiftUI
+import UIKit
 
-/// 手动添加连接：host/port/TLS 开关/token。扫码失败兜底或无码时用。
+/// 粘贴官方链接添加（二维码和链接内容相同，粘链接等效扫码）。
 struct ManualAddView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var host = ""
-    @State private var port = "8787"
-    @State private var useTLS = false
-    @State private var token = ""
-    @State private var showRawPaste = false
-    @State private var rawURL = ""
+    @State private var raw = ""
+    @State private var error: String?
 
-    let onAdd: (String, Int, Bool, String) -> Void
+    let onAdd: (String) -> Void
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("服务器") {
-                    TextField("主机（如 192.168.1.10）", text: $host)
-                        .keyboardType(.decimalPad)
+                Section {
+                    TextEditor(text: $raw)
+                        .frame(minHeight: 100)
                         .autocorrectionDisabled()
-                    TextField("端口", text: $port)
-                        .keyboardType(.numberPad)
-                    Toggle("TLS (wss)", isOn: $useTLS)
-                }
-                Section("Token") {
-                    SecureField("bridge token（.zcode-bridge-token 文件内容）", text: $token)
-                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .font(.footnote)
+                } header: {
+                    Text("ZCode 官方远程链接")
+                } footer: {
+                    Text("PC 端 ZCode「远程连接」给出的 https://…zcode.z.ai/remote/… 链接，与二维码内容相同，二选一即可。")
                 }
                 Section {
-                    Button("粘贴 zcode:// 链接解析") { showRawPaste = true }
+                    Button("从剪贴板粘贴") {
+                        if let s = UIPasteboard.general.string { raw = s }
+                    }
+                }
+                if let error {
+                    Section { Text(error).foregroundStyle(.red).font(.footnote) }
                 }
             }
             .navigationTitle("添加连接")
@@ -39,23 +40,14 @@ struct ManualAddView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("添加") {
-                        guard let p = Int(port), (1...65535).contains(p), !host.isEmpty else { return }
-                        onAdd(host, p, useTLS, token)
+                        guard ConnectionParser.parse(raw) != nil else {
+                            error = "链接格式不对：需为 https://…zcode.z.ai/remote/…"
+                            return
+                        }
+                        onAdd(raw)
                     }
-                    .disabled(host.isEmpty || Int(port) == nil)
+                    .disabled(raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-            }
-            .alert("粘贴链接", isPresented: $showRawPaste) {
-                TextField("zcode://192.168.1.10:8787?token=…", text: $rawURL)
-                Button("解析") {
-                    if let (conn, tk) = ConnectionParser.parse(rawURL) {
-                        host = conn.host
-                        port = String(conn.port)
-                        useTLS = conn.useTLS
-                        token = tk
-                    }
-                }
-                Button("取消", role: .cancel) {}
             }
         }
     }
