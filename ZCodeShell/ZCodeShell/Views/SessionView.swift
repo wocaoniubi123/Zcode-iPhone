@@ -42,7 +42,7 @@ struct RemoteWebView: UIViewRepresentable {
         // 并提供"已保存"反馈（内置菜单存图无任何提示）
         let longPress = UILongPressGestureRecognizer(
             target: context.coordinator, action: #selector(Coordinator.longPress(_:)))
-        longPress.minimumPressDuration = 0.45
+        longPress.minimumPressDuration = 0.35
         longPress.delegate = context.coordinator
         web.addGestureRecognizer(longPress)
 
@@ -155,14 +155,11 @@ struct RemoteWebView: UIViewRepresentable {
             }
         }
 
-        /// 自接管图片菜单（中文），替代系统英文菜单
+        /// 自接管图片菜单（中文，只留保存），替代系统英文菜单
         private func showImageMenu(src: String, in web: WKWebView, at point: CGPoint) {
             let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
             alert.addAction(UIAlertAction(title: "保存到相册", style: .default) { [weak self] _ in
                 self?.saveImage(from: src, in: web)
-            })
-            alert.addAction(UIAlertAction(title: "复制图片", style: .default) { [weak self] _ in
-                self?.copyImage(from: src, in: web)
             })
             alert.addAction(UIAlertAction(title: "取消", style: .cancel))
             // iPad 必须给 sourceView，否则弹不出
@@ -222,17 +219,6 @@ struct RemoteWebView: UIViewRepresentable {
             }
         }
 
-        private func copyImage(from src: String, in web: WKWebView) {
-            fetchImageData(src: src, in: web) { data in
-                guard let data, let img = UIImage(data: data) else {
-                    self.toast("获取图片失败")
-                    return
-                }
-                UIPasteboard.general.image = img
-                self.toast("已复制图片")
-            }
-        }
-
         // MARK: - Toast
 
         private func toast(_ text: String) {
@@ -271,7 +257,13 @@ struct RemoteWebView: UIViewRepresentable {
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            true  // 不阻止官方页面自身的边缘交互
+            // 长按手势与 WKWebView 内置长按（弹英文菜单）互斥：
+            // 我们的 minimumPressDuration(0.35s) 短于系统(~0.5s) 必先识别；互斥保证独占
+            if gestureRecognizer is UILongPressGestureRecognizer,
+               other is UILongPressGestureRecognizer {
+                return false
+            }
+            return true  // 左滑边缘手势不阻止官方页面自身的边缘交互
         }
     }
 

@@ -61,6 +61,13 @@ final class ConnectionStore: ObservableObject {
         persist()
     }
 
+    /// 重命名：只改壳内显示名，远程链接与凭证不动。
+    func rename(_ meta: Meta, to name: String) {
+        guard let idx = connections.firstIndex(where: { $0.id == meta.id }) else { return }
+        connections[idx].name = name
+        persist()
+    }
+
     func touch(_ meta: Meta) {
         guard let idx = connections.firstIndex(where: { $0.id == meta.id }) else { return }
         connections[idx].lastUsed = Date()

@@ -9,6 +9,8 @@ struct RootView: View {
     @Binding var inSession: Bool
     @State private var path: [ConnectionStore.Meta] = []
     @State private var pendingDelete: ConnectionStore.Meta?
+    @State private var renameTarget: ConnectionStore.Meta?
+    @State private var renameText = ""
     @State private var showScanner = false
     @State private var showManual = false
     @State private var showPlusMenu = false
@@ -39,6 +41,7 @@ struct RootView: View {
                             LazyVStack(spacing: 11) {
                                 ForEach(store.connections) { meta in
                                     SwipeToDeleteCard(shade: shade,
+                                                      onRename: { renameTarget = meta; renameText = meta.name },
                                                       onDelete: { pendingDelete = meta }) {
                                         card(meta)
                                     }
@@ -82,6 +85,18 @@ struct RootView: View {
             Button("好", role: .cancel) {}
         } message: {
             Text(invalidAlert)
+        }
+        .alert("重命名连接", isPresented: Binding(get: { renameTarget != nil },
+                                             set: { if !$0 { renameTarget = nil } })) {
+            TextField("连接名称", text: $renameText)
+            Button("保存") {
+                let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let m = renameTarget, !name.isEmpty { store.rename(m, to: name) }
+                renameTarget = nil
+            }
+            Button("取消", role: .cancel) { renameTarget = nil }
+        } message: {
+            Text("仅改显示名，不影响远程连接本身。")
         }
         .confirmationDialog("删除连接「\(pendingDelete?.name ?? "")」？",
                             isPresented: Binding(get: { pendingDelete != nil },
@@ -278,55 +293,88 @@ struct RootView: View {
     }
 }
 
-// MARK: - 左滑删除卡片（ScrollView 内自定义实现，替代 List swipeActions）
+// MARK: - 左滑操作卡片（ScrollView 内自定义实现）：重命名 + 删除，且滑动后吞掉点击
 
 struct SwipeToDeleteCard<Content: View>: View {
     let shade: DecorShade
+    let onRename: () -> Void
     let onDelete: () -> Void
     @ViewBuilder let content: Content
 
     @State private var offsetX: CGFloat = 0
-    @State private var isSwiping = false
+    @GestureState private var dragState: CGFloat = 0
+    /// 本次触摸发生过横向滑动 → 吞掉随之而来的点击（防止滑一下直接进远程）
+    @State private var consumedTap = false
 
-    private let deleteWidth: CGFloat = 84
+    private let actionWidth: CGFloat = 150   // 重命名 + 删除 两颗按钮总宽
+
+    private var currentOffset: CGFloat {
+        min(0, max(-actionWidth - 24, offsetX + dragState))
+    }
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            // 底下露出的删除按钮
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offsetX = 0 }
-                onDelete()
-            } label: {
-                VStack(spacing: 4) {
-                    Image(systemName: "trash.fill")
-                    Text("删除").font(.system(size: 12, weight: .semibold))
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offsetX = 0 }
+                    onRename()
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                        Text("重命名").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 66, height: 78)
+                    .background(Color.orange, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
-                .foregroundStyle(.white)
-                .frame(width: deleteWidth - 12, height: 78)
-                .background(Color.red, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .buttonStyle(.plain)
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offsetX = 0 }
+                    onDelete()
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "trash.fill")
+                        Text("删除").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 66, height: 78)
+                    .background(Color.red, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .opacity(offsetX < -12 ? 1 : 0)
+            .opacity(currentOffset < -12 ? 1 : 0)
             .padding(.trailing, 6)
 
             content
-                .offset(x: offsetX)
+                .offset(x: currentOffset)
+                // 滑动发生后的短暂窗口内禁点：吞掉随滑动而来的 tap（防误进远程）
+                .allowsHitTesting(!consumedTap)
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 25, coordinateSpace: .local)
-                        .onChanged { g in
+                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                        .updating($dragState) { g, state, _ in
                             // 只响应横向主导的拖动，避免吃掉纵向滚动
-                            guard abs(g.translation.width) > abs(g.translation.height) else { return }
-                            isSwiping = true
-                            let t = g.translation.width
-                            offsetX = max(-deleteWidth - 24, min(0, (isSwiping ? 0 : offsetX) + t))
+                            if abs(g.translation.width) > abs(g.translation.height) {
+                                state = g.translation.width
+                                if abs(g.translation.width) > 12 { consumedTap = true }
+                            }
                         }
-                        .onEnded { g in
-                            isSwiping = false
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                offsetX = offsetX < -deleteWidth / 2 ? -deleteWidth : 0
+                        .onEnded { _ in
+                            if consumedTap {
+                                // 滑动结束：开档或归位，并在短暂窗口内拦截点击
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    offsetX = currentOffset < -actionWidth / 2 ? -actionWidth : 0
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                    consumedTap = false
+                                }
                             }
                         }
                 )
+                .onTapGesture { }
+                .allowsHitTesting(true)
+        }
+        .onChange(of: dragState) { _, new in
+            _ = new
         }
     }
 }
