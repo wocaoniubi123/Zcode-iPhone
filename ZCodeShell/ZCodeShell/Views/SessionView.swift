@@ -104,7 +104,7 @@ struct RemoteWebView: UIViewRepresentable {
     static let themeProbeJS = """
     (function(){
       var lum = function(c){
-        var m = /rgba?\(([^)]+)\)/.exec(c);
+        var m = c.indexOf('rgb') >= 0 ? c.slice(c.indexOf('rgb'), c.indexOf(')') + 1) : null; // 
         if (!m) return null;
         var p = m[1].split(',').map(parseFloat);
         if (p.length < 3) return null;
